@@ -17,7 +17,7 @@ ekf_filter_node:
   ros__parameters:
     frequency: 50.0
     sensor_timeout: 0.1
-    two_d_mode: false
+    two_d_mode: true
 
     publish_tf: true
     map_frame: map
@@ -26,13 +26,13 @@ ekf_filter_node:
     world_frame: odom
 
     # Wheel odometry from diff_drive_controller.
-    # Fuse linear velocities (X, Y, Z). Z velocity is always 0 on a ground robot,
-    # which helps keep the 3D estimate from floating in Z.
+    # Fuse planar linear velocities and wheel-based yaw rate. The IMU yaw rate
+    # below receives more weight through its smaller measurement covariance.
     odom0: diff_drive_controller/odom
     odom0_config: [false, false, false,
                    false, false, false,
-                   true,  true,  true,
-                   false, false, false,
+                   true,  true,  false,
+                   false, false, true,
                    false, false, false]
     odom0_queue_size: 10
     odom0_nodelay: false
@@ -40,15 +40,14 @@ ekf_filter_node:
     odom0_relative: false
 
     # IMU from imu_filter_madgwick.
-    # Fuse only angular velocity (wx, wy, wz). Wheel odometry provides vx/vy,
-    # so we do not need accelerometer data, and we avoid the zero-covariance
-    # orientation published by the 6-DOF Madgwick filter.
+    # Fuse only yaw angular velocity (wz) to correct wheel slip during turns.
+    # Wheel odometry provides vx/vy, and orientation/acceleration are not fused.
     # ekf_node automatically transforms vectors from imu_link to base_footprint.
     imu0: imu/data
     imu0_config: [false, false, false,
                   false, false, false,
                   false, false, false,
-                  true,  true,  true,
+                  false, false, true,
                   false, false, false]
     imu0_queue_size: 10
     imu0_nodelay: false
