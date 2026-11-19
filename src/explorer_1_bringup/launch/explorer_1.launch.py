@@ -12,6 +12,11 @@ def generate_launch_description():
 
     urdf_path = os.path.join(robot_description_path, 'urdf', 'explorer_1.urdf.xacro')
     robot_controllers = os.path.join(robot_bringup_path, 'config', 'explorer_1_controllers.yaml')
+    ydlidar_config_path = os.path.join(
+        get_package_share_path('ydlidar_ros2_driver'),
+        'params',
+        'X2.yaml',
+    )
 
     use_esp32_hardware_arg = DeclareLaunchArgument(
         'use_esp32_hardware',
@@ -75,6 +80,14 @@ def generate_launch_description():
         parameters=[os.path.join(robot_bringup_path, "config", "ekf.yaml")],
     )
 
+    ydlidar_node = Node(
+        package="ydlidar_ros2_driver",
+        executable="ydlidar_ros2_driver_node",
+        name="ydlidar_ros2_driver_node",
+        parameters=[ydlidar_config_path],
+        output="screen",
+    )
+
     return LaunchDescription([
         use_esp32_hardware_arg,
         robot_state_publisher_node,
@@ -84,4 +97,5 @@ def generate_launch_description():
         imu_sensor_broadcaster_spawner,
         imu_filter_node,
         ekf_node,
+        ydlidar_node,
     ])
