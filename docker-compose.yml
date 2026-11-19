@@ -1,0 +1,52 @@
+name: slabs_explorer
+services:
+  ros2:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      target: base
+      args:
+        ROS_DISTRO: ${ROS_DISTRO:-jazzy}
+        USER_UID: ${USER_UID:-1000}
+        USER_GID: ${USER_GID:-1000}
+    image: ${COMPOSE_PROJECT_NAME}:${ROS_DISTRO:-jazzy}
+    container_name: ${COMPOSE_PROJECT_NAME}
+    stdin_open: true
+    tty: true
+    command: sleep infinity
+
+    network_mode: host
+    ipc: host
+
+    environment:
+      DISPLAY: ${DISPLAY}
+      NVIDIA_VISIBLE_DEVICES: all
+      NVIDIA_DRIVER_CAPABILITIES: all,graphics
+      __GLX_VENDOR_LIBRARY_NAME: nvidia
+      __NV_PRIME_RENDER_OFFLOAD: "1"
+      ROS_DOMAIN_ID: 42 # same non-default value on both
+      ROS_AUTOMATIC_DISCOVERY_RANGE: SUBNET # discover across the LAN
+      RMW_IMPLEMENTATION: rmw_fastrtps_cpp
+
+    volumes:
+      - /tmp/.X11-unix:/tmp/.X11-unix
+      - .:/home/ros/ws:cached
+      # Mount all of /dev so Docker never crashes if devices are missing at boot.
+      # This allows PlatformIO symlinks to dynamically appear when plugged in.
+      - /dev:/dev:ro
+
+    device_cgroup_rules:
+      # SECURITY: Banish keyboard/mouse by ONLY whitelisting these specific classes:
+      - "c 166:* rwm" # ACM USB Devices (Arduinos)
+      - "c 188:* rwm" # USB-to-Serial Chips (ESP32)
+      - "c 13:* rwm" # Input Subsystem (Strictly allows Joysticks / Gamepads)
+
+    working_dir: /home/ros/ws
+    user: ros
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: all
+              capabilities: [gpu]
