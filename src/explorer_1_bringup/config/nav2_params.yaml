@@ -91,10 +91,10 @@ controller_server:
       ax_min: -2.0
       ay_max: 0.3
       ay_min: -0.3
-      az_max: 4.0
+      az_max: 8.0
       vx_std: 0.1
       vy_std: 0.1
-      wz_std: 0.2
+      wz_std: 0.6
       vx_max: 0.5
       vx_min: -0.15
       vy_max: 0.0
@@ -295,8 +295,8 @@ behavior_server:
     transform_tolerance: 0.1
     simulate_ahead_time: 1.0
     max_rotational_vel: 2.0
-    min_rotational_vel: 0.20
-    rotational_acc_lim: 4.0
+    min_rotational_vel: 0.30
+    rotational_acc_lim: 8.0
 
 waypoint_follower:
   ros__parameters:
@@ -337,8 +337,8 @@ velocity_smoother:
     feedback: "CLOSED_LOOP"
     max_velocity: [0.5, 0.0, 2.0]
     min_velocity: [-0.15, 0.0, -2.0]
-    max_accel: [2.0, 0.0, 4.0]
-    max_decel: [-2.0, 0.0, -4.0]
+    max_accel: [2.0, 0.0, 8.0]
+    max_decel: [-2.0, 0.0, -8.0]
     odom_topic: "odometry/filtered"
     odom_duration: 0.1
     deadband_velocity: [0.0, 0.0, 0.0]
