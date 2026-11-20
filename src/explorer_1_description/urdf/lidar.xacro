@@ -19,6 +19,6 @@
   <joint name="top_cover_laser_joint" type="fixed">
     <parent link="top_cover"/>
     <child link="laser_frame"/>
-    <origin rpy="0 0 0" xyz="0 0 0.038"/>
+    <origin rpy="0 ${pi} 0" xyz="0 0 0.038"/>
   </joint>
 </robot>
