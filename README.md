@@ -7,18 +7,26 @@ ROS 2 Jazzy stack for the Explorer 1 differential-drive robot.
 
 ## Running the robot
 
+On the robot:
+
 ```bash
 # Start the robot: hardware, controllers, EKF, and lidar.
 ros2 launch explorer_1_bringup explorer_1.launch.py
 ```
 
 ```bash
-# In a second terminal, start online SLAM + Nav2.
+# Start online SLAM + Nav2. The controller plugin defaults to MPPI;
+# use controller:=rpp to switch to Regulated Pure Pursuit.
 ros2 launch explorer_1_bringup autonomy.launch.py
+ros2 launch explorer_1_bringup autonomy.launch.py controller:=rpp
 ```
 
-Add `use_rviz:=false` if you do not want the Nav2 RViz view. In RViz, use the
-**Nav2 Goal** tool to send a `2D Goal Pose`.
+On a laptop or development machine:
+
+```bash
+# Start the Nav2 RViz view and use the Nav2 Goal tool to send goals.
+ros2 launch explorer_1_bringup rviz.launch.py
+```
 
 ## Saving the map
 

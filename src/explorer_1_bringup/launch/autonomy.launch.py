@@ -3,9 +3,9 @@ import os
 from ament_index_python.packages import get_package_share_directory
 from launch import LaunchDescription
 from launch.actions import DeclareLaunchArgument, IncludeLaunchDescription
-from launch.conditions import IfCondition
 from launch.launch_description_sources import PythonLaunchDescriptionSource
 from launch.substitutions import LaunchConfiguration, PythonExpression
+from nav2_common.launch import RewrittenYaml
 
 
 def generate_launch_description():
@@ -15,7 +15,7 @@ def generate_launch_description():
     slam_params_file = LaunchConfiguration('slam_params_file')
     nav2_params_file = LaunchConfiguration('nav2_params_file')
     use_sim_time = LaunchConfiguration('use_sim_time')
-    use_rviz = LaunchConfiguration('use_rviz')
+    controller = LaunchConfiguration('controller')
 
     slam_params_file_arg = DeclareLaunchArgument(
         'slam_params_file',
@@ -37,14 +37,26 @@ def generate_launch_description():
         description='Use simulation (Gazebo) clock if true',
     )
 
-    use_rviz_arg = DeclareLaunchArgument(
-        'use_rviz',
-        default_value='true',
-        description='Whether to start the Nav2 RViz view',
+    controller_arg = DeclareLaunchArgument(
+        'controller',
+        default_value='mppi',
+        choices=['mppi', 'rpp'],
+        description='Local controller plugin to use: mppi or regulated_pure_pursuit',
     )
 
-    use_rviz_condition = IfCondition(
-        PythonExpression(["'", use_rviz, "' == 'true'"])
+    controller_plugin = PythonExpression(
+        ["'",
+         controller,
+         "' == 'rpp' and 'nav2_regulated_pure_pursuit_controller::RegulatedPurePursuitController' "
+         "or 'nav2_mppi_controller::MPPIController'"])
+
+    configured_params = RewrittenYaml(
+        source_file=nav2_params_file,
+        root_key='',
+        param_rewrites={
+            'controller_server.ros__parameters.FollowPath.plugin': controller_plugin,
+        },
+        convert_types=True,
     )
 
     slam_launch = IncludeLaunchDescription(
@@ -72,7 +84,7 @@ def generate_launch_description():
             'use_localization': 'False',
             'map': '',
             'use_sim_time': use_sim_time,
-            'params_file': nav2_params_file,
+            'params_file': configured_params,
             'autostart': 'True',
             'use_composition': 'False',
             'use_respawn': 'False',
@@ -80,24 +92,11 @@ def generate_launch_description():
         }.items(),
     )
 
-    rviz_launch = IncludeLaunchDescription(
-        PythonLaunchDescriptionSource(
-            os.path.join(bringup_dir, 'launch', 'rviz_launch.py')
-        ),
-        condition=use_rviz_condition,
-        launch_arguments={
-            'namespace': '',
-            'use_namespace': 'False',
-            'use_sim_time': use_sim_time,
-        }.items(),
-    )
-
     return LaunchDescription([
         slam_params_file_arg,
         nav2_params_file_arg,
         use_sim_time_arg,
-        use_rviz_arg,
+        controller_arg,
         slam_launch,
         nav2_launch,
-        rviz_launch,
     ])
