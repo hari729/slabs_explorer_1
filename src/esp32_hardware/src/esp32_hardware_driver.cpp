@@ -7,6 +7,7 @@
 
 #include <cmath>
 #include <cerrno>
+#include <chrono>
 #include <cstring>
 #include <fcntl.h>
 #include <termios.h>
@@ -256,6 +257,51 @@ bool Esp32HardwareDriver::sendVelocityCommand(double left_rpm, double right_rpm)
 
   ssize_t written = ::write(fd_, frame, frame_len);
   return written == static_cast<ssize_t>(frame_len);
+}
+
+bool Esp32HardwareDriver::applyConfig(
+  const esp32_protocol::ConfigCmd & config, int timeout_ms)
+{
+  if (fd_ < 0) {
+    return false;
+  }
+
+  uint8_t frame[sizeof(config) + 6];
+  const uint16_t frame_len = esp32_protocol::frame_pack(
+      esp32_protocol::PacketType::ConfigCmd, &config, sizeof(config), frame);
+
+  ssize_t written = ::write(fd_, frame, frame_len);
+  if (written != static_cast<ssize_t>(frame_len)) {
+    return false;
+  }
+
+  const auto deadline =
+    std::chrono::steady_clock::now() + std::chrono::milliseconds(timeout_ms);
+  esp32_protocol::FrameParser parser;
+
+  while (std::chrono::steady_clock::now() < deadline) {
+    uint8_t buf[64];
+    const ssize_t n = ::read(fd_, buf, sizeof(buf));
+    if (n > 0) {
+      for (ssize_t i = 0; i < n; ++i) {
+        const auto result = parser.feed(buf[i]);
+        if (result == esp32_protocol::FrameParser::Result::FrameReady) {
+          if (parser.type() == esp32_protocol::PacketType::ConfigReport &&
+              parser.length() == sizeof(esp32_protocol::ConfigReport))
+          {
+            return true;
+          }
+          parser.reset();
+        } else if (result == esp32_protocol::FrameParser::Result::InvalidFrame) {
+          parser.reset();
+        }
+      }
+    } else {
+      usleep(5000);
+    }
+  }
+
+  return false;
 }
 
 double Esp32HardwareDriver::ticksToRadians(long ticks) const

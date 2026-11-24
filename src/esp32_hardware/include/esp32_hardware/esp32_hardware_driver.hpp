@@ -56,6 +56,14 @@ public:
   /** @brief Send per-wheel velocity targets in rad/s. */
   void setTargetVelocityRadianPerSec(double left, double right);
 
+  /**
+   * @brief Push motor configuration to the ESP32 and wait for acknowledgment.
+   * @param config Packed config to send.
+   * @param timeout_ms Maximum time to wait for the ConfigReport echo.
+   * @return true if a valid ConfigReport was received.
+   */
+  bool applyConfig(const esp32_protocol::ConfigCmd & config, int timeout_ms = 1000);
+
   /** @brief Latest wheel position in radians. */
   double getPositionRadian(WheelSide side) const;
 

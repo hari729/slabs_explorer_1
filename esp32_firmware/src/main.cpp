@@ -8,19 +8,9 @@
 #include <freertos/task.h>
 
 #include "protocol.h"
-
-// Pin map
-static const int LEFT_PWM_PIN = 19;
-static const int LEFT_DIR_PIN = 18;
-static const int RIGHT_PWM_PIN = 26;
-static const int RIGHT_DIR_PIN = 25;
-
-static const int RIGHT_ENC_A_PIN = 32;
-static const int RIGHT_ENC_B_PIN = 33;
-static const int LEFT_ENC_A_PIN = 34;
-static const int LEFT_ENC_B_PIN = 35;
-
-static const int ESTOP_PIN = 4;
+#include "motor_config.h"
+#include "board_config.h"
+#include "autotune.h"
 
 // MPU6050 I2C
 static const int MPU6050_SDA_PIN = 21;
@@ -41,11 +31,6 @@ static const uint8_t MPU6050_CONFIG_DLPF_44HZ = 0x03;
 
 static const uint32_t MPU6050_I2C_CLOCK_HZ = 400000;
 
-static const int LEFT_ENCODER_SIGN = -1;
-static const int RIGHT_ENCODER_SIGN = 1;
-
-static const float TICKS_PER_REVOLUTION = 1399.2f;
-
 static const uint32_t CONTROL_PERIOD_MS = 10;
 static const uint32_t REPORT_PERIOD_MS = 20;
 static const uint32_t WATCHDOG_TIMEOUT_MS = 500;
@@ -60,18 +45,7 @@ static const UBaseType_t SERIAL_TASK_PRIORITY = 2;
 
 static const TickType_t MUTEX_TIMEOUT_TICKS = pdMS_TO_TICKS(50);
 
-static const int PWM_FREQUENCY_HZ = 20000;
-static const int PWM_RESOLUTION_BITS = 10;
-static const int PWM_MAX_DUTY = (1 << PWM_RESOLUTION_BITS) - 1;
-static const int LEFT_PWM_CHANNEL = 0;
-static const int RIGHT_PWM_CHANNEL = 1;
-
-static const float FF_DUTY_PER_RPM = 7.522;
-static const float MIN_START_DUTY = 98.0;
-static const float PI_KP = 2.051;
-static const float PI_KI = 20.515;
-static const float PI_INTEGRAL_LIMIT = 100.0f;
-static const float MAX_ABS_RPM = 150.0f;
+motor_config::RobotConfig g_config;
 
 ESP32Encoder g_left_encoder;
 ESP32Encoder g_right_encoder;
@@ -106,18 +80,6 @@ static float clampf(float value, float min_value, float max_value) {
 
 static int32_t read_encoder_ticks(ESP32Encoder &encoder, int sign) {
   return static_cast<int32_t>(encoder.getCount()) * sign;
-}
-
-static void set_motor_pwm(int pwm_channel, int dir_pin, int duty) {
-  duty = constrain(duty, -PWM_MAX_DUTY, PWM_MAX_DUTY);
-
-  if (duty >= 0) {
-    digitalWrite(dir_pin, LOW);
-    ledcWrite(pwm_channel, duty);
-  } else {
-    digitalWrite(dir_pin, HIGH);
-    ledcWrite(pwm_channel, PWM_MAX_DUTY + duty);
-  }
 }
 
 static void stop_motors_locked(bool take_mutex) {
@@ -232,21 +194,25 @@ static bool estop_is_pressed() {
   return digitalRead(ESTOP_PIN) == LOW;
 }
 
-static int pi_to_pwm(float target_rpm, float measured_rpm, float &integral,
-                     float dt_s) {
+static int pi_to_pwm(int side, float target_rpm, float measured_rpm,
+                     float &integral, float dt_s) {
   if (fabsf(target_rpm) < 1.0f) {
     integral = 0.0f;
     return 0;
   }
 
+  const int dir = (target_rpm > 0.0f) ? motor_config::kFwd : motor_config::kRev;
+  const auto &m = g_config.motors[side];
+
   const float error = target_rpm - measured_rpm;
   integral += error * dt_s;
-  integral = clampf(integral, -PI_INTEGRAL_LIMIT, PI_INTEGRAL_LIMIT);
+  integral = clampf(integral, -g_config.integral_limit, g_config.integral_limit);
 
-  float duty = FF_DUTY_PER_RPM * target_rpm + PI_KP * error + PI_KI * integral;
+  const float ff_mag = m.ff_k[dir] * fabsf(target_rpm) + m.ff_d0[dir];
+  float duty = copysignf(ff_mag, target_rpm) + m.kp * error + m.ki * integral;
 
-  if (fabsf(duty) < MIN_START_DUTY) {
-    duty = copysignf(MIN_START_DUTY, target_rpm);
+  if (fabsf(duty) < m.min_duty[dir]) {
+    duty = copysignf(m.min_duty[dir], target_rpm);
   }
 
   duty = clampf(duty, static_cast<float>(-PWM_MAX_DUTY),
@@ -261,25 +227,73 @@ static void handle_velocity_command(float left_rpm, float right_rpm) {
 
   if (xSemaphoreTake(g_state_mutex, MUTEX_TIMEOUT_TICKS) != pdTRUE) return;
 
-  g_target_left_rpm = clampf(left_rpm, -MAX_ABS_RPM, MAX_ABS_RPM);
-  g_target_right_rpm = clampf(right_rpm, -MAX_ABS_RPM, MAX_ABS_RPM);
+  g_target_left_rpm = clampf(left_rpm, -g_config.max_abs_rpm, g_config.max_abs_rpm);
+  g_target_right_rpm = clampf(right_rpm, -g_config.max_abs_rpm, g_config.max_abs_rpm);
   g_last_command_ms = millis();
   g_watchdog_tripped = false;
 
   xSemaphoreGive(g_state_mutex);
 }
 
-static void handle_frame(const esp32_protocol::FrameParser &parser) {
-  using namespace esp32_protocol;
+static void send_config_report(uint8_t status)
+{
+  esp32_protocol::ConfigReport report{};
+  report.version = motor_config::kVersion;
+  report.status = status;
+  report.reserved = 0;
+  report.config = g_config;
 
-  if (parser.type() != PacketType::VelocityCmd ||
-      parser.length() != sizeof(VelocityCmd)) {
+  uint8_t frame[sizeof(report) + 6];
+  const uint16_t frame_len = esp32_protocol::frame_pack(
+      esp32_protocol::PacketType::ConfigReport, &report, sizeof(report), frame);
+
+  if (g_serial_mutex != nullptr &&
+      xSemaphoreTake(g_serial_mutex, MUTEX_TIMEOUT_TICKS) == pdTRUE) {
+    Serial.write(frame, frame_len);
+    xSemaphoreGive(g_serial_mutex);
+  }
+}
+
+static void handle_config_command(const esp32_protocol::FrameParser &parser)
+{
+  if (parser.length() != sizeof(esp32_protocol::ConfigCmd)) {
+    send_config_report(2);  // invalid
     return;
   }
 
-  VelocityCmd cmd;
-  std::memcpy(&cmd, parser.payload(), sizeof(cmd));
-  handle_velocity_command(cmd.left_rpm, cmd.right_rpm);
+  esp32_protocol::ConfigCmd incoming{};
+  std::memcpy(&incoming, parser.payload(), sizeof(incoming));
+  const bool stored_ok = motor_config::save(incoming);
+
+  uint8_t status = 2;
+  if (stored_ok) {
+    if (std::memcmp(&g_config, &incoming, sizeof(g_config)) == 0) {
+      status = 0;  // applied unchanged
+    } else {
+      status = 1;  // applied after clamping
+    }
+    g_config = incoming;
+  }
+
+  send_config_report(status);
+}
+
+static void handle_frame(const esp32_protocol::FrameParser &parser) {
+  using namespace esp32_protocol;
+
+  if (parser.type() == PacketType::VelocityCmd &&
+      parser.length() == sizeof(VelocityCmd)) {
+    VelocityCmd cmd;
+    std::memcpy(&cmd, parser.payload(), sizeof(cmd));
+    handle_velocity_command(cmd.left_rpm, cmd.right_rpm);
+    return;
+  }
+
+  if (parser.type() == PacketType::ConfigCmd &&
+      parser.length() == sizeof(ConfigCmd)) {
+    handle_config_command(parser);
+    return;
+  }
 }
 
 static void serial_task_poll_rx() {
@@ -308,9 +322,9 @@ static void run_control_step(uint32_t now_ms) {
   g_last_right_ticks = right_ticks;
 
   g_measured_left_rpm =
-      (static_cast<float>(delta_left) / TICKS_PER_REVOLUTION) / dt_s * 60.0f;
+      (static_cast<float>(delta_left) / g_config.ticks_per_revolution) / dt_s * 60.0f;
   g_measured_right_rpm =
-      (static_cast<float>(delta_right) / TICKS_PER_REVOLUTION) / dt_s * 60.0f;
+      (static_cast<float>(delta_right) / g_config.ticks_per_revolution) / dt_s * 60.0f;
 
   if (estop_is_pressed()) {
     stop_motors_locked(false);
@@ -325,10 +339,11 @@ static void run_control_step(uint32_t now_ms) {
     return;
   }
 
-  const int left_duty =
-      pi_to_pwm(g_target_left_rpm, g_measured_left_rpm, g_integral_left, dt_s);
-  const int right_duty = pi_to_pwm(g_target_right_rpm, g_measured_right_rpm,
-                                   g_integral_right, dt_s);
+  const int left_duty = pi_to_pwm(
+      motor_config::kLeft, g_target_left_rpm, g_measured_left_rpm, g_integral_left, dt_s);
+  const int right_duty = pi_to_pwm(
+      motor_config::kRight, g_target_right_rpm, g_measured_right_rpm,
+      g_integral_right, dt_s);
 
   set_motor_pwm(LEFT_PWM_CHANNEL, LEFT_DIR_PIN, left_duty);
   set_motor_pwm(RIGHT_PWM_CHANNEL, RIGHT_DIR_PIN, right_duty);
@@ -454,6 +469,20 @@ void setup() {
   g_last_right_ticks = read_encoder_ticks(g_right_encoder, RIGHT_ENCODER_SIGN);
 
   g_mpu6050_initialized = init_mpu6050();
+
+  const bool config_loaded = motor_config::load(g_config);
+  Serial.printf("# motor config loaded from %s\n",
+                config_loaded ? "NVS" : "defaults");
+  motor_config::print(g_config);
+
+  if (TUNE_MODE_PIN >= 0) {
+    pinMode(TUNE_MODE_PIN, INPUT_PULLUP);
+    if (digitalRead(TUNE_MODE_PIN) == LOW) {
+      Serial.println("# TUNE MODE requested (GPIO 27 LOW).");
+      run_autotune();
+      // run_autotune() never returns; power cycle to run normally.
+    }
+  }
 
   start_rtos_tasks();
 }

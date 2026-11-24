@@ -28,6 +28,50 @@ On a laptop or development machine:
 ros2 launch explorer_1_bringup rviz.launch.py
 ```
 
+## Motor configuration and tuning
+
+Motor parameters live in
+`src/explorer_1_description/urdf/mobile_base.ros2_control.xacro`.
+When `explorer_1.launch.py` starts, `esp32_hardware_interface` reads those
+parameters, sends them to the ESP32 over the serial protocol, and the ESP32
+stores them in NVS flash. After the first launch the values persist across
+power cycles, so you can edit them without reflashing the firmware.
+
+Editable parameters:
+
+| Parameter | Meaning |
+|---|---|
+| `ticks_per_revolution` | Encoder ticks per wheel revolution |
+| `max_abs_rpm` | Maximum commanded wheel RPM |
+| `integral_limit` | PI integrator anti-windup clamp |
+| `<side>_ff_k_fwd` / `_rev` | Feed-forward slope: duty per RPM |
+| `<side>_ff_d0_fwd` / `_rev` | Feed-forward deadband offset (duty) |
+| `<side>_min_duty_fwd` / `_rev` | Smallest duty that starts the wheel turning |
+| `<side>_kp` | PI proportional gain |
+| `<side>_ki` | PI integral gain |
+
+### Onboard tuning mode
+
+The main firmware contains the same motor identification routine as
+`esp32_pid/`. To use it:
+
+1. **Lift the wheels off the ground.** Motors will spin up to full duty.
+2. Connect a USB cable and open the serial monitor at 115200 baud.
+3. Pull **GPIO 27** to **GND** and power-cycle (or reset) the ESP32.
+4. The firmware prints the tuning menu. Type `g` + Enter to start.
+   - Type `x` at any time to abort.
+   - Press the estop switch to stop immediately.
+5. After the sweep and step tests finish, the firmware prints the new
+   parameters as paste-ready xacro `<param>` lines and then halts.
+6. Copy the printed lines into
+   `src/explorer_1_description/urdf/mobile_base.ros2_control.xacro`,
+   replacing the old values.
+7. Power-cycle the ESP32 (with GPIO 27 **open**) and relaunch the robot.
+   The new values are pushed to NVS on startup.
+
+> The tuner only measures PI gains from a forward step response, so `kp` and
+> `ki` are per-side; feed-forward and breakaway values are per-direction.
+
 ## Saving the map
 
 While `autonomy.launch.py` is running:

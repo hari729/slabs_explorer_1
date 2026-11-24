@@ -54,6 +54,7 @@ private:
   std::vector<std::string> right_wheel_joint_names_;
 
   std::string imu_sensor_name_{"imu_sensor"};
+  esp32_protocol::ConfigCmd motor_config_{};
 };
 
 }  // namespace esp32_hardware

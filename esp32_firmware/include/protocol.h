@@ -19,10 +19,13 @@ namespace esp32_protocol
 
 static constexpr uint8_t SYNC0 = 0xAA;
 static constexpr uint8_t SYNC1 = 0x55;
+static constexpr uint16_t kConfigVersion = 1;
 
 enum class PacketType : uint8_t {
   VelocityCmd = 0x01,
   EncoderReport = 0x02,
+  ConfigCmd = 0x03,
+  ConfigReport = 0x04,
 };
 
 #pragma pack(push, 1)
@@ -40,10 +43,36 @@ struct EncoderReport {
   int16_t gyro[3];
 };
 
+struct MotorConfig {
+  float ff_k[2];      // index 0 = forward, 1 = reverse (duty per rpm)
+  float ff_d0[2];     // deadband offset per direction (duty)
+  float min_duty[2];  // smallest duty to start moving per direction
+  float kp;
+  float ki;
+};
+
+struct ConfigCmd {
+  uint16_t version;
+  float ticks_per_revolution;
+  float max_abs_rpm;
+  float integral_limit;
+  MotorConfig motors[2];  // index 0 = left, 1 = right
+};
+
+struct ConfigReport {
+  uint16_t version;
+  uint8_t status;     // 0 = applied, 1 = clamped, 2 = invalid
+  uint8_t reserved;
+  ConfigCmd config;
+};
+
 #pragma pack(pop)
 
 static_assert(sizeof(VelocityCmd) == 8, "VelocityCmd packing mismatch");
 static_assert(sizeof(EncoderReport) == 24, "EncoderReport packing mismatch");
+static_assert(sizeof(MotorConfig) == 32, "MotorConfig packing mismatch");
+static_assert(sizeof(ConfigCmd) == 78, "ConfigCmd packing mismatch");
+static_assert(sizeof(ConfigReport) == 82, "ConfigReport packing mismatch");
 
 /**
  * @brief CRC-16/CCITT-FALSE.
@@ -178,7 +207,7 @@ public:
   const uint8_t *payload() const { return payload_; }
 
 private:
-  static constexpr uint8_t kMaxPayload = 32;
+  static constexpr uint8_t kMaxPayload = 128;
 
   enum class State {
     Sync0,

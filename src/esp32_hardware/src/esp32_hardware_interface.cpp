@@ -8,6 +8,8 @@
 #include <algorithm>
 #include <cmath>
 #include <pluginlib/class_list_macros.hpp>
+#include <stdexcept>
+#include <unordered_map>
 
 #include "hardware_interface/types/hardware_interface_type_values.hpp"
 
@@ -30,6 +32,22 @@ std::string velocityInterfaceName(const std::string & joint_name)
 std::string imuSensorInterfaceName(const std::string & sensor_name, const std::string & interface_name)
 {
   return sensor_name + "/" + interface_name;
+}
+
+double getDoubleParam(
+  const std::unordered_map<std::string, std::string> & params,
+  const std::string & name,
+  double default_value)
+{
+  const auto it = params.find(name);
+  if (it == params.end()) {
+    return default_value;
+  }
+  try {
+    return std::stod(it->second);
+  } catch (const std::exception &) {
+    return default_value;
+  }
 }
 
 }  // namespace
@@ -96,6 +114,39 @@ hardware_interface::CallbackReturn Esp32HardwareInterface::on_configure(
   if (!driver_->init()) {
     return hardware_interface::CallbackReturn::ERROR;
   }
+
+  const auto & params = info_.hardware_parameters;
+  motor_config_.version = esp32_protocol::kConfigVersion;
+  motor_config_.ticks_per_revolution = static_cast<float>(getDoubleParam(params, "ticks_per_revolution", 1399.2));
+  motor_config_.max_abs_rpm = static_cast<float>(getDoubleParam(params, "max_abs_rpm", 150.0));
+  motor_config_.integral_limit = static_cast<float>(getDoubleParam(params, "integral_limit", 100.0));
+
+  const std::pair<const char *, int> sides[] = {{"left", 0}, {"right", 1}};
+  for (const auto & side : sides) {
+    auto & m = motor_config_.motors[side.second];
+    const std::string p = std::string(side.first) + "_";
+    m.ff_k[0] = static_cast<float>(getDoubleParam(params, p + "ff_k_fwd", 7.522));
+    m.ff_k[1] = static_cast<float>(getDoubleParam(params, p + "ff_k_rev", 7.522));
+    m.ff_d0[0] = static_cast<float>(getDoubleParam(params, p + "ff_d0_fwd", 0.0));
+    m.ff_d0[1] = static_cast<float>(getDoubleParam(params, p + "ff_d0_rev", 0.0));
+    m.min_duty[0] = static_cast<float>(getDoubleParam(params, p + "min_duty_fwd", 98.0));
+    m.min_duty[1] = static_cast<float>(getDoubleParam(params, p + "min_duty_rev", 98.0));
+    m.kp = static_cast<float>(getDoubleParam(params, p + "kp", 2.051));
+    m.ki = static_cast<float>(getDoubleParam(params, p + "ki", 20.515));
+  }
+
+  if (!driver_->applyConfig(motor_config_)) {
+    RCLCPP_ERROR(
+      get_logger(),
+      "Failed to apply motor config to ESP32");
+    return hardware_interface::CallbackReturn::ERROR;
+  }
+
+  RCLCPP_INFO(
+    get_logger(),
+    "ESP32 motor config applied (TPR=%.3f, max_rpm=%.1f)",
+    motor_config_.ticks_per_revolution,
+    motor_config_.max_abs_rpm);
 
   return hardware_interface::CallbackReturn::SUCCESS;
 }
