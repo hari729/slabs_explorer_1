@@ -86,6 +86,6 @@ This writes `my_map.pgm` and `my_map.yaml`.
 
 - Do not run teleop and autonomous navigation at the same time; both publish
   velocity commands on `/diff_drive_controller/cmd_vel`.
-- Initial Nav2 limits are conservative: ~0.15 m/s and ~0.75 rad/s. Tune on
-  your hardware after validating in a clear, supervised space.
+- Tuned Nav2 limits: 0.20 m/s forward, 0.8 rad/s path-following yaw, 1.5 rad/s
+  in-place spin. Validate in a clear, supervised space.
 
