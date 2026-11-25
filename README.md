@@ -50,6 +50,10 @@ Editable parameters:
 | `<side>_kp` | PI proportional gain |
 | `<side>_ki` | PI integral gain |
 
+Nav2 and controller limits, plus the skid-steer calibration that produced the
+current `wheel_separation`, are documented in
+[`src/explorer_1_bringup/config/TUNING.md`](src/explorer_1_bringup/config/TUNING.md).
+
 ### Onboard tuning mode
 
 The main firmware contains the same motor identification routine as
