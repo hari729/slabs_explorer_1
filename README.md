@@ -5,6 +5,8 @@ ROS 2 Jazzy stack for the Explorer 1 differential-drive robot.
 - [YDLidar SDK build/install](https://github.com/YDLIDAR/YDLidar-SDK/blob/master/doc/howto/how_to_build_and_install.md)
 - [ydlidar_ros2_driver](https://github.com/YDLIDAR/ydlidar_ros2_driver)
 
+The YDLidar SDK is an external build prerequisite; it is not vendored in this repository.
+
 ## Running the robot
 
 On the robot:
@@ -32,10 +34,11 @@ ros2 launch explorer_1_bringup rviz.launch.py
 
 Motor parameters live in
 `src/explorer_1_description/urdf/mobile_base.ros2_control.xacro`.
-When `explorer_1.launch.py` starts, `esp32_hardware_interface` reads those
-parameters, sends them to the ESP32 over the serial protocol, and the ESP32
-stores them in NVS flash. After the first launch the values persist across
-power cycles, so you can edit them without reflashing the firmware.
+When `explorer_1.launch.py` starts, the `esp32_hardware` ros2_control plugin reads those
+parameters and sends them to the ESP32 over the binary serial protocol. The ESP32
+stores them in NVS flash, but ROS pushes the current xacro values on every launch, so
+the xacro file remains the source of truth. NVS only keeps the last values for standalone
+firmware runs.
 
 Editable parameters:
 
@@ -56,8 +59,8 @@ current `wheel_separation`, are documented in
 
 ### Onboard tuning mode
 
-The main firmware contains the same motor identification routine as
-`esp32_pid/`. To use it:
+The main firmware contains the motor identification routine in
+`esp32_firmware/src/autotune.cpp`. To use it:
 
 1. **Lift the wheels off the ground.** Motors will spin up to full duty.
 2. Connect a USB cable and open the serial monitor at 115200 baud.
@@ -71,7 +74,7 @@ The main firmware contains the same motor identification routine as
    `src/explorer_1_description/urdf/mobile_base.ros2_control.xacro`,
    replacing the old values.
 7. Power-cycle the ESP32 (with GPIO 27 **open**) and relaunch the robot.
-   The new values are pushed to NVS on startup.
+   The new values are sent to the ESP32 when the robot is relaunched.
 
 > The tuner only measures PI gains from a forward step response, so `kp` and
 > `ki` are per-side; feed-forward and breakaway values are per-direction.
@@ -92,4 +95,3 @@ This writes `my_map.pgm` and `my_map.yaml`.
   velocity commands on `/diff_drive_controller/cmd_vel`.
 - Tuned Nav2 limits: 0.20 m/s forward, 0.8 rad/s path-following yaw, 1.5 rad/s
   in-place spin. Validate in a clear, supervised space.
-

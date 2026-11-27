@@ -105,11 +105,6 @@ Visualization Manager:
           Show Axes: false
           Show Trail: false
           Value: true
-        top_cover:
-          Alpha: 1
-          Show Axes: false
-          Show Trail: false
-          Value: true
       Mass Properties:
         Inertia: false
         Mass: false
@@ -143,8 +138,6 @@ Visualization Manager:
           Value: true
         right_2_wheel_link:
           Value: true
-        top_cover:
-          Value: true
       Marker Scale: 1
       Name: TF
       Show Arrows: true
@@ -156,6 +149,8 @@ Visualization Manager:
             base_link:
               imu_link:
                 {}
+              laser_frame:
+                {}
               left_1_wheel_link:
                 {}
               left_2_wheel_link:
@@ -164,9 +159,6 @@ Visualization Manager:
                 {}
               right_2_wheel_link:
                 {}
-              top_cover:
-                laser_frame:
-                  {}
       Update Interval: 0
       Value: true
     - Alpha: 1

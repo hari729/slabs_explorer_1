@@ -26,8 +26,8 @@ ekf_filter_node:
     world_frame: odom
 
     # Wheel odometry from diff_drive_controller.
-    # Fuse planar linear velocities and wheel-based yaw rate. The IMU yaw rate
-    # below receives more weight through its smaller measurement covariance.
+    # Fuse planar linear velocities (vx, vy) only. The IMU yaw rate below
+    # supplies vyaw; wheel-based yaw rate is not fused.
     odom0: diff_drive_controller/odom
     odom0_config:
       [

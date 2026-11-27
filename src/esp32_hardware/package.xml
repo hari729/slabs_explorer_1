@@ -5,10 +5,11 @@
   <version>0.1.0</version>
   <description>
     ros2_control hardware interface for ESP32 differential drive over USB serial.
-    Reads encoder ticks and sends wheel RPM setpoints using a simple text protocol.
+    Reads encoder ticks and sends wheel RPM setpoints using a binary framed
+    protocol with CRC-16/CCITT-FALSE.
   </description>
-  <maintainer email="user@todo.todo">kompor</maintainer>
-  <license>MIT</license>
+  <maintainer email="hmv7293@gmail.com">hari729</maintainer>
+  <license>Apache-2.0</license>
 
   <buildtool_depend>ament_cmake</buildtool_depend>
 

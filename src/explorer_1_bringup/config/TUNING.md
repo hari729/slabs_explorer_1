@@ -185,4 +185,4 @@ Re-run the 90° spin calibration if any of these change:
 
 If the constant-spin test tracks the right yaw but the motion is still
 stuttery/lurching at low speed, the remaining cause is the firmware's
-unconditional `min_duty` floor in `esp32_firmware/src/main.cpp` (Phase 2).
+unconditional `min_duty` floor in `esp32_firmware/src/main.cpp`.
